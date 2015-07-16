@@ -1,0 +1,99 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Samer Araabi"
+date: "July 15, 2015"
+output: html_document
+---
+
+## Overview
+
+This following analysis is designed to use machine learning models to predict the manner in which participants of the Human Activity Recognition project performed a series of predetermined  exercises. After cleaning the dataset to isolate more robust variables, a "random forest" machine-learning model was able to replciate the system used by Groupware@LES with over 99% accuracy.
+
+More information on the original study can be accessed at the following URL: http://groupware.les.inf.puc-rio.br/har
+
+## Retrieving and storing the data
+
+The data was pulled directly from the online HAR archive and loaded into R using the following code.
+```{r}
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(train_url, dest="training.csv", method="curl")
+download.file(test_url, dest="testing.csv", method="curl")
+training <- read.csv("training.csv")
+testing <- read.csv("testing.csv")
+```
+
+## Cleaning and formatting
+
+A preliminary analysis of the data revealed that many of the columns had little to no data.
+
+```{r}
+nas <- list()
+for(i in names(training)){
+  nas <- c(nas, sum(is.na(training[i])))
+  }
+sum(nas>10000)
+```
+
+These were removed from the dataset, along with columns that were blank:
+
+```{r}
+clean_train <- training[nas==0]
+clean_test <- testing[nas==0]
+
+empty <- list()
+for(i in names(clean_train)){
+  empty <- c(empty, sum(clean_train[i]==""))
+  }
+
+clean_train <- clean_train[empty==0]
+clean_test <- clean_test[empty==0]
+```
+
+The first seven columns, which contained descriptors but no predictive data, were also removed:
+
+```{r}
+clean_train <- clean_train[,-c(1:7)]
+clean_test <- clean_test[,-c(1:7)]
+```
+
+Lastly, the remaining 52 variables (except for the dependent "classe" variable, were converted to numerics to facilitate the modeling:
+```{r}
+for(i in 1:52){
+  clean_train[,i] <- as.numeric(clean_train[,i])
+  }
+str(clean_train)
+```
+
+## Partitioning
+The cleaned data was then partitioned into training and testing groupings, with 70% in the training group and the remaining 30% in the testing group. Note that the "caret" package is required to perform the data partition, and that a seed was set to ensure reproducibility. 
+
+```{r}
+library(caret)
+set.seed(6492)
+inTrain = createDataPartition(y=clean_train$classe, p= 0.7, list=FALSE)
+training_data <- clean_train[ inTrain,]
+testing_data <- clean_train[-inTrain,]
+
+```
+
+## Modelling
+
+The data was modeled using a "random forest" machine-learning method. Note that parallel processing was used to reduce runtime for the model-building:
+```{r}
+library(randomForest)
+library(doParallel)
+registerDoParallel(cores=2)
+modFit <- train(classe ~ ., method="rf", data=training_data)
+modFit$finalModel
+```
+
+## Cross-Validation
+
+The model was validated on the testing data to determine the out-of-sample error rate, which was less than 1%:
+
+```{r}
+mean(predict(modFit, testing_data) == testing_data$classe)
+```
+
+We would therefore expect to accurately predict the manner of a participant's exercises with approximately 99% accuracy. 
